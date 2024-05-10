@@ -59,10 +59,12 @@ def get_model_config(model_variant):
         llama_config = LLaMAConfig(
             src_vocab_size=128256,
             emb_dim=4096,
+            norm_eps=1e-5,
             nheads=32,
             kvheads=8,
             nlayers=32,
             hidden_grow_factor=3.5,
+            multiple_of=1024,
             max_expected_seq_len=8192,
         )
     elif model_variant == "llama3_8b_4k":
