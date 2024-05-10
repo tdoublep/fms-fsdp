@@ -95,6 +95,8 @@ def main(**kwargs):
     #variant = "8b"
     arch = "embedgpt_bigcode",
     variant = "20b",
+    #arch = "embedmixtral",
+    #variant = "8x7b",
 
     model = get_model(
         arch,
@@ -122,19 +124,6 @@ def main(**kwargs):
         cfg.n_speculator_heads,
     )
     speculator.reset_parameters()
-
-    # llama_config = get_model_config(cfg.model_variant)
-
-    # if cfg.low_cpu_fsdp:
-    #     if rank == 0:
-    #         model = LLaMA(llama_config)
-    #         model.reset_parameters()
-    #     else:
-    #         with torch.device("meta"):
-    #             model = LLaMA(llama_config)
-    # else:
-    #     model = LLaMA(llama_config)
-    #     model.reset_parameters()
 
     if rank == 0:
         total_params = sum(
