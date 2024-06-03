@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 from fms_fsdp.utils.dataset_utils import Streaming_Doc_Dataset
 
+os.environ['PYTORCH_CUDA_ALLOC_CONF']='expandable_segments:True'
 
 # This example script validates the LLaMA implementation by running inference on a couple of prompts.
 # torchrun --nproc_per_node=1 scripts/inference.py --variant=7b --model_path=~/models/7B-F --tokenizer=~/models/tokenizer.model --model_source=meta --speculator_path=~/models/speculator_7B_F.pth --compile
@@ -152,14 +153,17 @@ if args.device_type == "cuda":
 else:
     device = torch.device(args.device_type)
 
-torch.set_default_dtype(torch.half)
+#torch.set_default_dtype(torch.half)
+torch.set_default_dtype(torch.bfloat16)
 
 # requires setting environment variable: `CUBLAS_WORKSPACE_CONFIG=:4096:8`
 if args.deterministic:
     torch.use_deterministic_algorithms(True)
 
-if args.distributed:
-    dist.init_process_group()
+#if args.distributed:
+#    dist.init_process_group()
+    
+dist.init_process_group()
 
 print("loading model")
 if args.distributed:
@@ -177,9 +181,10 @@ model = get_model(
     checkpoint_sharding=args.checkpoint_sharding,
     device_type=args.device_type,
     source=args.model_source,
-    distributed_strategy=distr_param,
-    group=dist.group.WORLD,
-    norm_eps=1e-6,
+    #distributed_strategy=distr_param,
+    distributed_strategy="fsdp",
+    #group=dist.group.WORLD,
+    #norm_eps=1e-6,
 )
 decode_model = None
 
@@ -190,7 +195,7 @@ speculator = None
 if args.speculator_path is not None:
     print("loading speculator")
     speculator = MLPSpeculator(
-        model.config.emb_dim, 4096, model.config.src_vocab_size, n_predict=args.n_predict
+        model.config.emb_dim, 3584, model.config.src_vocab_size, n_predict=args.n_predict
     )
     speculator.load_state_dict(
         torch.load(args.speculator_path, map_location=device)["model_state"]
@@ -224,7 +229,8 @@ print("cache initialization complete on rank", local_rank)
 print("loading dataset", args.data_path)
 dataset = Streaming_Doc_Dataset(
     args.data_path,
-    local_rank,
+    #local_rank,
+    0,
     world_size,
     -1,
     datasets=[
@@ -238,7 +244,8 @@ dataset = iter(dataset)
 data = []
 in_middle = False
 print("pulling data to build reusable prompt set")
-while len(data) < 256:
+while len(data) < 5:
+#while len(data) < 256:
     chunk = next(dataset)
     if not in_middle:
         data.append(chunk[: args.prompt_len])

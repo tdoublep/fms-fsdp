@@ -87,6 +87,7 @@ class Checkpointer:
         rank,
         local_rank,
         report_fn=None,
+        model_auto_placement=False,
     ):
         self.max_ckps = n_to_save
         self.rank = rank
@@ -96,6 +97,7 @@ class Checkpointer:
         self.p_mode = parallel_mode
         assert parallel_mode in ["fsdp", "hsdp", "ddp"]
         self.report = self._selective_print if report_fn is None else report_fn
+        self.model_auto_placement = model_auto_placement
 
     def _selective_print(self, *args, **kwargs):
         if self.rank == 0:
@@ -210,7 +212,12 @@ class Checkpointer:
                         planner=DefaultLoadPlanner(),
                     )
                     model.load_state_dict(model_ckp["model_state"])
-                model.to(self.local_rank)
+               
+                if self.model_auto_placement:
+                    model.to('cuda')
+                else:    
+                    model.to(self.local_rank)
+
                 self.report(model_load_time=time.time() - model_load_time)
                 step = 0
                 ntok = 0
@@ -239,7 +246,8 @@ class Checkpointer:
                 # Load dataset
                 if dataloader is not None:
                     data_load_time = time.time()
-                    dataloader.dataset.load_from_path(load_path)
+                    #dataloader.dataset.load_from_path(load_path)
+                    dataloader.dataset.load_from_path(path)
                     self.report(dataset_load_time=time.time() - data_load_time)
                 else:
                     self.report("Skipping dataset load, no dataloader provided.")

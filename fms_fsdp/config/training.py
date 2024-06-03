@@ -5,6 +5,7 @@ from typing import Optional, Union
 @dataclass
 class train_config:
     # model
+    model_arch: str = "llama"
     model_variant: str = "7b"
     ckpt_load_path: str = "/fsx/output/ckpt"
     ckpt_save_path: str = "/fsx/output/ckpt"

@@ -1,11 +1,15 @@
 import math
 import os
+import time
 
 import fire  # type: ignore
 import torch
 import torch.optim as optim
+import fms.distributed.tensorparallel
 from fms.models import get_model, register_model
 from fms.models.llama import LLaMABlock
+from fms.models.gpt_bigcode import GPTBigCodeBlock
+from fms_extras.models.calico import CalicoBlock 
 from fms_extras.models.speculator import MLPSpeculator  # type: ignore
 from torch import distributed as dist
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
@@ -23,35 +27,49 @@ from fms_fsdp.utils.train_utils import (
     setup,
     setup_environ_flags,
 )
-from speculator.train_speculator_utils import EmbedLLaMA, train_speculator
+from speculator.train_speculator_utils import EmbedLLaMA, train_speculator, ModelEmbedsWrapper, generate
+from transformers import AutoModelForCausalLM, AutoConfig
 
 os.environ['PYTORCH_CUDA_ALLOC_CONF']='expandable_segments:True'
+#os.environ['ENABLE_INTRA_NODE_COMM']='1'   #works only for no-mesh configuration; usefule only for single-node TP
 
 
 
-def test_model(model, arch, cfg):
+def test_model(rank, model, arch, cfg):
+    print("testing model output")
     tokenizer = tokenizers.get_tokenizer(cfg.model_path)
     template = "Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n{}\n\n### Response:"
 
-    prompt = template.format(
-        "Provide a list of instructions for preparing chicken soup."
-    )
+    if rank < 4:
+        prompt = template.format(
+            "Provide a list of instructions for preparing chicken soup."
+        )
+    else:
+        prompt = template.format(
+            "Provide a list of instructions for preparing chicken soup."
+            #"Give a list of steps to create many large borwn brick walls."
+        )
+        
     tokens = tokenizer.tokenize(prompt)
     ids = tokenizer.convert_tokens_to_ids(tokens)
     if 'llama' in arch:
         ids = [tokenizer.bos_token_id] + ids
     ids = torch.tensor(ids, dtype=torch.long, device="cuda")
+    print("calling generate")
     result = generation.generate(
+    #result = generate(
         model,
         ids,
         max_new_tokens=100,
         use_cache=True,
         do_sample=False,
         max_seq_len=8192,
+        #include_embeds=False
     )
+    print("generate done")
     result = generation.truncate_after_eos(result, tokenizer.eos_token_id)
-    if rank == 0:
-        print("quick test of base model")
+    if rank == 0 or rank == 4:
+        print(f"{rank}: quick test of base model")
         print(tokenizer.convert_tokens_to_string(tokenizer.convert_ids_to_tokens(result)))
 
 
@@ -71,12 +89,24 @@ def main(**kwargs):
     world_size = int(os.environ["WORLD_SIZE"])
 
     if rank == 0:
-        print(f"--> running with these configs {cfg}")
+        print(f"{time.time()}--> running with these configs {cfg}")
 
     # some setups
-    setup()
-    torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
     torch.cuda.set_device(local_rank)
+
+    if cfg.sharding_strategy != 'tp':
+        setup()
+        torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
+        base_model_mesh = None
+        speculator_mesh = None
+    else:
+        base_model_mesh = setup(dp=world_size//8, tp=8)
+        speculator_mesh = dist.device_mesh.init_device_mesh('cuda', (world_size,))
+        #base_model_mesh = setup(dp=2, tp=4) #simulated multi node in a single node
+        #speculator_mesh = dist.device_mesh.init_device_mesh('cuda', (8,))
+        torch._C._distributed_c10d._register_process_group("default", base_model_mesh['tp'].get_group())
+        #fms.distributed.tensorparallel.TP_MESH = base_model_mesh['tp']
+
     torch.cuda.empty_cache()
     setup_environ_flags()
     torch.set_default_dtype(torch.bfloat16)
@@ -89,39 +119,92 @@ def main(**kwargs):
         apply_selective_ac,
         param_init_fn,
     ) = get_policies(cfg, rank, LLaMABlock)
+    #) = get_policies(cfg, rank, GPTBigCodeBlock)
+    #) = get_policies(cfg, rank, CalicoBlock)
 
-    # get base model
-    #arch = "embedllama"
-    #variant = "8b"
-    arch = "embedgpt_bigcode",
-    variant = "20b",
-    #arch = "embedmixtral",
-    #variant = "8x7b",
+    load_HF=False
+    manual_FSDP=False
+    do_model_eval=False
 
-    model = get_model(
-        arch,
-        variant,
-        model_path=cfg.model_path,
-        device_type="cuda",
-        source="hf",
-        distributed_strategy=cfg.sharding_strategy,
-    )
+    if load_HF:
+        if rank == 0:
+            model = AutoModelForCausalLM.from_pretrained(cfg.model_path, low_cpu_mem_usage=True)
+        else:
+            model_config = AutoConfig.from_pretrained(cfg.model_path)
+            with torch.device("meta"):
+                model = AutoModelForCausalLM.from_config(model_config)
+        if rank == 0:
+            total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            print(f"\n--> model has {total_params / 1e6} Million params\n")
+
+    else:
+        model = get_model(
+            cfg.model_arch,
+            cfg.model_variant,
+            model_path=cfg.model_path,
+            device_type="cuda",
+            source="hf",
+            distributed_strategy=cfg.sharding_strategy,
+            group=base_model_mesh['tp'].get_group() if cfg.sharding_strategy == 'tp' else None,
+        )
+
+    if manual_FSDP:   #manual FSDP for fms speculator_training_experimental branch
+        model = FSDP(
+            model,
+            auto_wrap_policy=wrapping_policy,
+            mixed_precision=mixed_precision_policy,
+            sharding_strategy=sharding_strategy_policy,
+            use_orig_params=cfg.use_torch_compile,
+            device_id=torch.cuda.current_device(),
+            limit_all_gathers=True,
+            sync_module_states=cfg.low_cpu_fsdp,
+            param_init_fn=lambda module: (
+                module.to_empty(device=torch.device("cuda"), recurse=False)
+                if cfg.low_cpu_fsdp
+                else None
+            ),
+        )    
     
-    test_model(model, arch, cfg)
+    if cfg.sharding_strategy == 'tp':
+        print(f"{local_rank}, {rank}, {world_size}, {base_model_mesh['tp'].get_group()}, {base_model_mesh['tp'].size()}, {base_model_mesh['tp'].get_local_rank()}")
 
+    if rank == 0:
+        print(f"{time.time()}")
+        print(model.config)
+        print(model)
+        print("Loading speculator")
+
+    if do_model_eval:
+        model.eval()
+        torch.set_grad_enabled(False)    
+        test_model(rank, model, arch, cfg)
+        exit(0)
+    
     if hasattr(model.config, "emb_dim"):
         emb_dim = model.config.emb_dim
     elif hasattr(model.config, "dim"):  #Mixtral
         emb_dim = model.config.dim
+    elif hasattr(model.config, "hidden_size"):  #HF
+        emb_dim = model.config.hidden_size
     else:
         raise Exception("config missing embedding dimension")
+    
+    if hasattr(model.config, "src_vocab_size"):  #FMS
+        vocab_size = model.config.src_vocab_size
+    elif hasattr(model.config, "vocab_size"):  #HF
+        vocab_size = model.config.vocab_size
+    else:
+        raise Exception("config missing vocab size config")
 
     # get speculator
     speculator = MLPSpeculator(
         emb_dim,
         cfg.speculator_width,
-        model.config.src_vocab_size,
+        vocab_size,
         cfg.n_speculator_heads,
+        tie_emb=True,
+        tie_head=True,
+        tie_transition=True,
     )
     speculator.reset_parameters()
 
@@ -129,17 +212,20 @@ def main(**kwargs):
         total_params = sum(
             p.numel() for p in speculator.parameters() if p.requires_grad
         )
-        print(f"\n--> speculator has {total_params / 1e6} Million params\n")
+        print(f"\n{time.time()}--> speculator has {total_params / 1e6} Million params\n")
 
     # get data loader
     if rank == 0:
-        print("Constructing datasets...")
+        print(f"{time.time()} Constructing datasets...")
     if not cfg.use_dummy_dataset:
-        train_loader = get_data_loader(cfg, rank, world_size, postprocess=[])
+        if cfg.sharding_strategy == 'tp':
+            train_loader = get_data_loader(cfg, speculator_mesh.get_rank(), speculator_mesh.size(), postprocess=[])
+        else:
+            train_loader = get_data_loader(cfg, rank, world_size, postprocess=[])
     else:
         train_loader = get_dummy_loader(cfg, rank, world_size)
     if rank == 0:
-        print("Datasets constructed!")
+        print(f"{time.time()} Datasets constructed!")
 
     # FSDP
     speculator = FSDP(
@@ -156,7 +242,27 @@ def main(**kwargs):
             if cfg.low_cpu_fsdp
             else None
         ),
+        device_mesh=speculator_mesh if cfg.sharding_strategy == 'tp' else None,
     )
+
+    if load_HF:
+        model = FSDP(
+            model,
+            auto_wrap_policy=wrapping_policy,
+            mixed_precision=mixed_precision_policy,
+            sharding_strategy=sharding_strategy_policy,
+            use_orig_params=cfg.use_torch_compile,
+            device_id=torch.cuda.current_device(),
+            sync_module_states=True,
+            param_init_fn=lambda module: (
+                module.to_empty(device=torch.device("cuda"), recurse=False)
+            ),
+            limit_all_gathers=True,
+        )
+
+        print(model.config)
+        model = ModelEmbedsWrapper(model)
+        print(model)
 
     # torch compile
     if cfg.use_torch_compile:
@@ -180,7 +286,10 @@ def main(**kwargs):
     )
 
     # optionally load from checkpoint (when continue pretraining)
-    checkpointer = Checkpointer(cfg.ckpt_save_path, 1000, "ddp", rank, local_rank)
+    if cfg.sharding_strategy == 'tp':
+        checkpointer = Checkpointer(cfg.ckpt_save_path, 1000, "ddp", speculator_mesh.get_rank(), speculator_mesh.get_local_rank(), model_auto_placement=True)
+    else:    
+        checkpointer = Checkpointer(cfg.ckpt_save_path, 1000, "ddp", rank, local_rank)
     speculator, optimizer, train_loader, start_step, tokens_seen = checkpointer.load(
         speculator,
         optimizer,
@@ -193,6 +302,7 @@ def main(**kwargs):
     # Stage 1: warm up over first 2k or 5% of steps, whichever is smaller.
     # Then cosine anneal to 10% of max LR.
     warmup_interval1 = min(2000, cfg.stage2_start_step // 20)
+    #warmup_interval1 = min(2000, cfg.stage2_start_step // 10)
     stage1_schedule = lambda x: min(
         1 - (1 - min(x, warmup_interval1) / warmup_interval1) ** 2,
         0.1
@@ -206,6 +316,7 @@ def main(**kwargs):
     # Stage 2: warm up over first 2k or 5% of steps, whichever is smaller.
     # Then cosine anneal to 10% of stage 1's final LR.
     warmup_interval2 = min(2000, (cfg.num_steps - cfg.stage2_start_step) // 20)
+    #warmup_interval2 = min(2000, (cfg.num_steps - cfg.stage2_start_step) // 10)
     stage2_schedule = lambda x: min(
         0.1 * (1 - (1 - min(x, warmup_interval2) / warmup_interval2) ** 2),
         0.01
@@ -233,7 +344,7 @@ def main(**kwargs):
 
     # Train
     if rank == 0:
-        print(f"Training for {cfg.num_steps} steps")
+        print(f"{time.time()} Training for {cfg.num_steps} steps")
     torch.cuda.empty_cache()
     train_speculator(
         cfg,
@@ -241,6 +352,7 @@ def main(**kwargs):
         speculator,
         local_rank,
         rank,
+        world_size,
         train_loader,
         optimizer,
         scheduler,
@@ -248,6 +360,8 @@ def main(**kwargs):
         start_step,
         tokens_seen,
         profiler,
+        base_model_mesh,
+        speculator_mesh,
     )
 
     dist.barrier()

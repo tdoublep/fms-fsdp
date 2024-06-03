@@ -177,9 +177,13 @@ def train(
     return train_loss
 
 
-def setup():
-    dist.init_process_group("nccl", timeout=timedelta(seconds=60 * 60))
-
+def setup(dp=None, tp=None):
+    if not dp or not tp:
+        dist.init_process_group("nccl", timeout=timedelta(seconds=60 * 60))
+    else:
+        return dist.device_mesh.init_device_mesh('cuda', (dp, tp), mesh_dim_names=('dp', 'tp'))
+        #return dist.device_mesh.init_device_mesh('cuda', (2, 4), mesh_dim_names=('dp', 'tp'))
+        #return dist.device_mesh.init_device_mesh('cuda', (world_size//8, 8), mesh_dim_names=('dp', 'tp'))
 
 def setup_environ_flags():
     os.environ["TORCH_SHOW_CPP_STACKTRACES"] = str(1)

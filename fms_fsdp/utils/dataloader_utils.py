@@ -10,6 +10,18 @@ from fms_fsdp.utils.dataset_utils import (
 )
 
 
+def causal_lm(data_seq, prompt_len=1):
+    """
+    Perform causal language modeling by right-shifting the input sequence.
+    Sets first prompt_len tokens to be ignored by the loss.
+    """
+    data_seq = torch.IntTensor(data_seq)
+    t = data_seq.clone()[1:]
+    data_seq = data_seq[:-1]
+    t[:prompt_len] = -100
+    return data_seq, t
+
+
 def get_dummy_loader(cfg, rank, world_size):
     """
     A simple dummy dataloader yielding incrementing vocab indices in an infinite loop
@@ -90,6 +102,7 @@ def get_data_loader(cfg, rank, world_size, postprocess=[causal_lm]):
         cfg.ckpt_save_path,
     )
     return torch.utils.data.DataLoader(data, num_workers=1, batch_size=cfg.batch_size)
+    #return torch.utils.data.DataLoader(data, num_workers=0, batch_size=cfg.batch_size)
 
 
 def parse_data_args(datas, weights):
@@ -107,15 +120,3 @@ def parse_data_args(datas, weights):
     datas = splitstrip(datas)
     weights = [float(x) for x in splitstrip(weights)]
     return datas, weights
-
-
-def causal_lm(data_seq, prompt_len=1):
-    """
-    Perform causal language modeling by right-shifting the input sequence.
-    Sets first prompt_len tokens to be ignored by the loss.
-    """
-    data_seq = torch.IntTensor(data_seq)
-    t = data_seq.clone()[1:]
-    data_seq = data_seq[:-1]
-    t[:prompt_len] = -100
-    return data_seq, t

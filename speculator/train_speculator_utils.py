@@ -10,10 +10,11 @@ from fms.models import register_model
 from fms.models.gpt_bigcode import GPTBigCode, GPTBigCodeConfig
 from fms.models.gpt_bigcode import _hf_sd_to_fms_sd as _gptbigcode_hf_sd_to_fms_sd
 from fms.models.llama import LLaMA
-from fms_models.llama import _hf_sd_to_fms_sd as _llama_hf_sd_to_fms_sd
-from fms.models.mixtral import MixtralConfig
-from fms.models.mixtral import _hf_sd_to_fms_sd as _mixtral_hf_sd_to_fms_sd
-from fms.utils import serialization
+from fms.models.llama import _hf_sd_to_fms_sd as _llama_hf_sd_to_fms_sd
+#from fms.models.mixtral import Mixtral, MixtralConfig
+#from fms.models.mixtral import _hf_sd_to_fms_sd as _mixtral_hf_sd_to_fms_sd
+from fms_extras.models.calico import Calico, CalicoConfig
+from fms.utils import serialization, tokenizers
 from fms.utils.generation import _make_cache_contiguous
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import DataLoader
@@ -58,6 +59,7 @@ def generate(
     next_input = input_ids
     kwargs: MutableMapping[str, Any] = dict()
     kwargs["past_key_value_states"] = None
+    #kwargs["past_key_values"] = None
     kwargs["use_cache"] = use_cache
     kwargs["include_embeds"] = include_embeds
 
@@ -76,9 +78,11 @@ def generate(
                 # maybe could be moved into model code to be more portable.
                 if contiguous_cache:
                     kwargs["past_key_value_states"] = _make_cache_contiguous(
+                    #kwargs["past_key_values"] = _make_cache_contiguous(
                         past_key_value_states
                     )
                 else:
+                    #kwargs["past_key_values"] = past_key_value_states
                     kwargs["past_key_value_states"] = past_key_value_states
         logits = logits[:, -1, :]
 
@@ -116,7 +120,7 @@ def generate(
     return result
 
 
-def stage1_loss(model, speculator, input, loss_fn, ddp_stats):
+def stage1_loss(cfg, model, speculator, base_model_input, input, loss_fn, ddp_stats, rank, world_size, base_model_mesh, speculator_mesh):
     """
     Perform a forward pass for stage 1 training and calculate the loss.
     Given the sequence of embeddings produced in parallel by the base model,
@@ -141,10 +145,12 @@ def stage1_loss(model, speculator, input, loss_fn, ddp_stats):
     """
     with torch.no_grad():
         _, embeds = model(
-            input[:, : -speculator.n_predict - 1],
+            base_model_input[:, : -speculator.n_predict - 1],
             include_embeds=True,
             use_cache=False,
         )
+    if cfg.sharding_strategy == 'tp':
+        embeds = embeds.chunk(base_model_mesh['tp'].size())[base_model_mesh['tp'].get_local_rank()]
     preds = speculator(embeds.detach(), input[:, 1:])
 
     losses = []
@@ -157,7 +163,7 @@ def stage1_loss(model, speculator, input, loss_fn, ddp_stats):
     return loss, ddp_stats, input.numel()
 
 
-def stage2_loss(cfg, model, speculator, input, loss_fn, ddp_stats):
+def stage2_loss(cfg, model, speculator, base_model_input, input, loss_fn, ddp_stats, rank, world_size, base_model_mesh, speculator_mesh):
     """
     Perform a forward pass for stage 2 training and calculate the loss.
     Given the sequence of embeddings produced in serial by the base model,
@@ -176,22 +182,26 @@ def stage2_loss(cfg, model, speculator, input, loss_fn, ddp_stats):
         assert (
             cfg.stage2_prompt_length * grow_factor <= cfg.seq_length
         ), "Error: batch is too small for specified partition"
-        input = input[:, : cfg.stage2_prompt_length * grow_factor].reshape(
-            input.size(0) * grow_factor, cfg.stage2_prompt_length
+        base_model_input = base_model_input[:, : cfg.stage2_prompt_length * grow_factor].reshape(
+            base_model_input.size(0) * grow_factor, cfg.stage2_prompt_length
         )
         targs, embeds = generate(
             model,
-            input,
+            base_model_input,
             cfg.seq_length,
             cfg.stage2_seq_length,
             do_sample=True,
             use_cache=True,
             include_embeds=True,
         )
+
+        if cfg.sharding_strategy == 'tp':
+            targs = targs.chunk(base_model_mesh['tp'].size())[base_model_mesh['tp'].get_local_rank()]
+            embeds = embeds.chunk(base_model_mesh['tp'].size())[base_model_mesh['tp'].get_local_rank()]
         targs = targs[:, -cfg.stage2_seq_length :]
         embeds = embeds[:, -cfg.stage2_seq_length : -speculator.n_predict]
     preds = speculator(embeds.detach(), targs[:, :-1].detach())
-
+    
     losses = []
     for i in range(preds.size(0)):
         targ = targs[:, i + 1 : preds.size(2) + i + 1]  # b n
@@ -202,12 +212,30 @@ def stage2_loss(cfg, model, speculator, input, loss_fn, ddp_stats):
     return loss, ddp_stats, targs.numel()
 
 
+def do_ckpt(ckpt_save_path, reset=False):
+    ckpt_cmd_file = ckpt_save_path + "/do_ckpt"
+    if not os.path.exists(ckpt_cmd_file):
+        return False
+
+    if reset:
+        with open(ckpt_cmd_file, 'w') as fd:
+            fd.write('0')
+        return False
+
+    with open(ckpt_cmd_file) as fd:
+        if fd.read().strip() == '1':
+            return True
+    
+    return False
+
+
 def train_speculator(
     cfg: train_config,
     model: nn.Module,
     speculator: nn.Module,
     local_rank: int,
     rank: int,
+    world_size: int,
     train_loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LRScheduler,
@@ -215,6 +243,8 @@ def train_speculator(
     start_step: int = 0,
     n_tok: int = 0,
     profiler: Optional[Union[torch.profiler.profile, None]] = None,
+    base_model_mesh = None,
+    speculator_mesh = None,
 ):
     """
     The training loop for speculator training. Handles at a high level: data loading,
@@ -261,21 +291,28 @@ def train_speculator(
     for batch_idx, input in enumerate(train_loader, start=start_step + 1):
         if batch_idx > cfg.num_steps:
             break
+
         input = input.to(local_rank)
+
+        if cfg.sharding_strategy == 'tp':
+            base_model_input = torch.zeros(base_model_mesh['tp'].size() * input.size(0), input.size(1), dtype=input.dtype, device=input.device)
+            dist.all_gather_into_tensor(base_model_input, input, group=base_model_mesh['tp'].get_group())        
+        else:
+            base_model_input = input
 
         optimizer.zero_grad()
 
         if batch_idx <= cfg.stage2_start_step:
             loss, ddp_stats, step_tok = stage1_loss(
-                model, speculator, input, loss_fn, ddp_stats
+                cfg, model, speculator, base_model_input, input, loss_fn, ddp_stats, rank, world_size, base_model_mesh, speculator_mesh
             )
         else:
             loss, ddp_stats, step_tok = stage2_loss(
-                cfg, model, speculator, input, loss_fn, ddp_stats
+                cfg, model, speculator, base_model_input, input, loss_fn, ddp_stats, rank, world_size, base_model_mesh, speculator_mesh
             )
 
         loss.backward()
-        ddp_stats[0] += speculator.clip_grad_norm_(cfg.grad_clip_thresh).item()
+        #ddp_stats[0] += speculator.clip_grad_norm_(cfg.grad_clip_thresh).item()
         optimizer.step()
         scheduler.step()
 
@@ -292,6 +329,7 @@ def train_speculator(
             world_size = int(os.environ["WORLD_SIZE"])
             elapsed_tokens += cfg.report_interval * world_size * step_tok
             if rank == 0:
+                print(f"{time.time()}")
                 print("step:", batch_idx)
                 print("tokens seen:", n_tok + elapsed_tokens)
                 for i in range(len(train_loss)):
@@ -321,16 +359,19 @@ def train_speculator(
             ddp_stats.zero_()
         torch.cuda.reset_peak_memory_stats(device=torch.cuda.current_device())
 
-        if batch_idx % cfg.checkpoint_interval == 0:
+        if batch_idx % cfg.checkpoint_interval == 0 or do_ckpt(cfg.ckpt_save_path) is True:
             torch.cuda.empty_cache()
-            checkpointer.save(
-                batch_idx,
-                speculator,
-                optimizer,
-                train_loader,
-                tokens_seen=elapsed_tokens + n_tok,
-            )
+            #if cfg.sharding_strategy != 'tp' or compute_mesh['tp'].get_group().rank() == 0:
+            if True:
+                checkpointer.save(
+                    batch_idx,
+                    speculator,
+                    optimizer,
+                    train_loader,
+                    tokens_seen=elapsed_tokens + n_tok,
+                )
             torch.cuda.empty_cache()
+            do_ckpt(cfg.ckpt_save_path, reset=True)
 
     checkpointer.save_single_file(
         batch_idx,
@@ -405,7 +446,28 @@ class EmbedLLaMA(LLaMA):
         return out
 
 
-class EmbedMixtral(Mixtral): #FMS impl of Mixtral
+class ModelEmbedsWrapper(nn.Module):
+    def __init__(self, base_model):
+        super(ModelEmbedsWrapper, self).__init__()
+        self.base_model = base_model
+
+    def forward(self, input, include_embeds=False, **kwargs):
+        output = self.base_model(input, **kwargs,output_hidden_states = True)  # from here you get the "embedding" you need.
+        hidden_states  = output.hidden_states[-1]
+        kv_cache = output.past_key_values
+        logits = output.logits
+        out = [logits]
+        if kwargs["use_cache"]:
+            out.append(kv_cache)
+        if include_embeds:
+            out.append(hidden_states)
+        if len(out) == 1:
+            return out[0]
+        return out
+
+
+#class EmbedMixtral(Mixtral): #FMS impl of Mixtral
+class EmbedMixtral(): #FMS impl of Mixtral
     # Overrides the forward function of Mixtral to allow returning embedding vectors
     def forward(
         self,
@@ -481,10 +543,10 @@ def _llama_factory_factory(config):
         return EmbedLLaMA(config, **kwargs)
     return factory
 
-def _mixtral_factory_factory(config):
-    def factory(**kwargs):
-        return EmbedMixtral(config, **kwargs)
-    return factory
+#def _mixtral_factory_factory(config):
+#    def factory(**kwargs):
+#        return EmbedMixtral(config, **kwargs)
+#    return factory
 
 _gpt_bigcode_20b_config = GPTBigCodeConfig(
     src_vocab_size=49152,
@@ -619,7 +681,8 @@ serialization.register_adapter("embedcalico", "hf", _calico_hf_sd_to_fms_sd)
 
 register_model("embedllama", "7b", _llama_factory_factory(get_model_config("7b")))
 register_model("embedllama", "8b", _llama_factory_factory(get_model_config("llama3_8b")))
+register_model("embedllama", "70b", _llama_factory_factory(get_model_config("llama3_70b")))
 serialization.register_adapter("embedllama", "hf", _llama_hf_sd_to_fms_sd) 
 
-register_model("embedmixtral", "8x7b", _mixtral_factory_factory(MixtralConfig()))
-serialization.register_adapter("embedmixtral", "hf", _mixtral_hf_sd_to_fms_sd)
+#register_model("embedmixtral", "8x7b", _mixtral_factory_factory(MixtralConfig()))
+#serialization.register_adapter("embedmixtral", "hf", _mixtral_hf_sd_to_fms_sd)
