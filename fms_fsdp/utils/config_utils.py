@@ -39,6 +39,8 @@ def get_model_config(model_variant):
             kvheads=8,
             nlayers=48,
             hidden_grow_factor=22016 / 8192,
+            max_expected_seq_len=16384,
+            rope_ratio=1000000.0,
         )
     elif model_variant == "13b":
         llama_config = LLaMAConfig(

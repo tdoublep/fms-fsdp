@@ -35,20 +35,24 @@ os.environ['PYTORCH_CUDA_ALLOC_CONF']='expandable_segments:True'
 
 
 
-def test_model(rank, model, arch, cfg):
+def test_model(rank, model, arch, cfg, prompt_type='chat'):
     print("testing model output")
     tokenizer = tokenizers.get_tokenizer(cfg.model_path)
-    template = "Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n{}\n\n### Response:"
+    if prompt_type == 'chat':
+        template = "Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n{}\n\n### Response:"
 
-    if rank < 4:
-        prompt = template.format(
-            "Provide a list of instructions for preparing chicken soup."
-        )
+        if rank < 4:
+            prompt = template.format(
+                "Provide a list of instructions for preparing chicken soup."
+            )
+        else:
+            prompt = template.format(
+                "Provide a list of instructions for preparing chicken soup."
+                #"Give a list of steps to create many large borwn brick walls."
+            )
     else:
-        prompt = template.format(
-            "Provide a list of instructions for preparing chicken soup."
-            #"Give a list of steps to create many large borwn brick walls."
-        )
+        template = "[INST] Write code to solve the following coding problem that obeys the constraints and passes the example test cases. Please wrap your code answer using ```:\n{}\n[/INST]"
+        prompt = template.format("Write a bubble sort function in python.")        
         
     tokens = tokenizer.tokenize(prompt)
     ids = tokenizer.convert_tokens_to_ids(tokens)
@@ -164,7 +168,15 @@ def main(**kwargs):
                 else None
             ),
         )    
-    
+   
+    print(model.config.max_expected_seq_len)
+    if False and not load_HF and hasattr(model, "rot_emb"):
+        print("SAHIL rot_emb")
+        model.rot_emb.compute_freqs_cis(
+            torch.device("cuda", torch.cuda.current_device()),
+            model.config.max_expected_seq_len + 10,
+        )
+
     if cfg.sharding_strategy == 'tp':
         print(f"{local_rank}, {rank}, {world_size}, {base_model_mesh['tp'].get_group()}, {base_model_mesh['tp'].size()}, {base_model_mesh['tp'].get_local_rank()}")
 
@@ -177,7 +189,7 @@ def main(**kwargs):
     if do_model_eval:
         model.eval()
         torch.set_grad_enabled(False)    
-        test_model(rank, model, arch, cfg)
+        test_model(rank, model, cfg.model_arch, cfg, prompt_type='code')
         exit(0)
     
     if hasattr(model.config, "emb_dim"):
@@ -205,6 +217,7 @@ def main(**kwargs):
         tie_emb=True,
         tie_head=True,
         tie_transition=True,
+        scale_input=True,
     )
     speculator.reset_parameters()
 

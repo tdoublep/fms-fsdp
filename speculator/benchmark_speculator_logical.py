@@ -182,7 +182,7 @@ model = get_model(
     device_type=args.device_type,
     source=args.model_source,
     #distributed_strategy=distr_param,
-    distributed_strategy="fsdp",
+    #distributed_strategy="fsdp",
     #group=dist.group.WORLD,
     #norm_eps=1e-6,
 )
@@ -195,7 +195,7 @@ speculator = None
 if args.speculator_path is not None:
     print("loading speculator")
     speculator = MLPSpeculator(
-        model.config.emb_dim, 3584, model.config.src_vocab_size, n_predict=args.n_predict
+        model.config.emb_dim, 6144, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True
     )
     speculator.load_state_dict(
         torch.load(args.speculator_path, map_location=device)["model_state"]
@@ -229,8 +229,8 @@ print("cache initialization complete on rank", local_rank)
 print("loading dataset", args.data_path)
 dataset = Streaming_Doc_Dataset(
     args.data_path,
-    #local_rank,
-    0,
+    local_rank, #for non fsdp model
+    #0, #for fsdp model
     world_size,
     -1,
     datasets=[
@@ -244,7 +244,7 @@ dataset = iter(dataset)
 data = []
 in_middle = False
 print("pulling data to build reusable prompt set")
-while len(data) < 5:
+while len(data) < 2:
 #while len(data) < 256:
     chunk = next(dataset)
     if not in_middle:
@@ -291,7 +291,8 @@ def infer(ids, k, warmup, model, decode_model, speculator):
     # varying results for the same prompt.
     max_seq_len = model.config.max_expected_seq_len if hasattr(model.config, "max_expected_seq_len") else model.config.max_pos
 
-    if k != 0:
+    #if k != 0:
+    if k != 0 and speculator is not None:
         result, n_steps, ttft, generated_token_time_out = speculative_generate(
             model,
             ids,

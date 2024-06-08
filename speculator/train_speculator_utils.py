@@ -377,6 +377,7 @@ def train_speculator(
         batch_idx,
         speculator,
         tokens_seen=elapsed_tokens + n_tok,
+        is_compiled=cfg.use_torch_compile,
     )
 
     return train_loss
@@ -681,6 +682,7 @@ serialization.register_adapter("embedcalico", "hf", _calico_hf_sd_to_fms_sd)
 
 register_model("embedllama", "7b", _llama_factory_factory(get_model_config("7b")))
 register_model("embedllama", "8b", _llama_factory_factory(get_model_config("llama3_8b")))
+register_model("embedllama", "34b", _llama_factory_factory(get_model_config("34b")))
 register_model("embedllama", "70b", _llama_factory_factory(get_model_config("llama3_70b")))
 serialization.register_adapter("embedllama", "hf", _llama_hf_sd_to_fms_sd) 
 

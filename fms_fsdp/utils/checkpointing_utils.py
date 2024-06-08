@@ -303,7 +303,10 @@ class Checkpointer:
             StateDictType.FULL_STATE_DICT,
             FullStateDictConfig(offload_to_cpu=True, rank0_only=True),
         ):
-            model_state = model.state_dict()
+            if 'is_compiled' in kwargs.keys() and kwargs['is_compiled'] is True:
+                model_state = model._orig_mod.state_dict()
+            else:    
+                model_state = model.state_dict()
         if self.rank == 0:
             metadata = kwargs
             metadata["step"] = step
