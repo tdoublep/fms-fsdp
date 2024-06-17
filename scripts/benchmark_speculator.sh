@@ -106,12 +106,53 @@ SPECULATOR_ARGS_LLAMA3_70B="\
 #--data_path="/gpfs/suneja/datasets/llama3-dolma"
 #--subdata="'dataset=stack'"
 
-export CUDA_VISIBLE_DEVICES=1
 
-#nohup torchrun \
-torchrun \
-    --nproc_per_node=1 \
-    speculator/benchmark_speculator_logical.py \
-    ${SPECULATOR_ARGS_GRANITE_34B}\
-    #> nohup.out &
+SPECULATOR_ARGS_CODELLAMA_34B="\
+--architecture=paged_llama
+--variant=34b.code
+--model_path="/gpfs/suneja/models/hub/models--codellama--CodeLlama-34b-Instruct-hf/snapshots/d4c1c474abcacd32d2a6eda45f9811d38c83e93d"
+--tokenizer_path="/gpfs/suneja/models/hub/models--codellama--CodeLlama-34b-Instruct-hf/snapshots/d4c1c474abcacd32d2a6eda45f9811d38c83e93d"
+--model_source=hf
+--speculator_path="/gpfs/suneja/checkpoints/codellama-34b/checkpoints/step_21001_ckp.pth"
+--prompt_len=64
+--data_path="/gpfs/suneja/datasets/bp7_llama2"
+--subdata="lang=en/dataset=github_clean"
+--n_predict=5
+--n_candidates=5
+--threshes=[6,5,4,3,3]
+--seed=211
+"
 
+SPECULATOR_ARGS_GRANITE20B_COBOL="\
+--architecture=paged_gpt_bigcode
+--variant=ibm.20b.cobol
+--model_path="/gpfs/prangan/granite20b-cobol"
+--tokenizer_path="/gpfs/prangan/granite20b-cobol"
+--model_source=hf
+--speculator_path="/gpfs/suneja/checkpoints/grantite-20b-code-instruct-v1-speculator/step_42001_ckp.pth"
+--prompt_len=64
+--data_path="/gpfs/prangan/data_g20bc_tokenizer/code_data"
+--subdata="dataset=ptv15_to_unsupervised"
+--n_predict=4
+--n_candidates=5
+--threshes=[6,4,3,3]
+--seed=211
+"
+
+
+DO_BACKGROUND=0
+
+if [ $DO_BACKGROUND -eq 1 ]
+then
+    nohup torchrun \
+        --nproc_per_node=8 \
+        speculator/benchmark_speculator_logical.py \
+        ${SPECULATOR_ARGS_LLAMA3_70B}\
+        > nohup.out &
+else
+    export CUDA_VISIBLE_DEVICES=1
+    torchrun \
+        --nproc_per_node=1 \
+        speculator/benchmark_speculator_logical.py \
+        ${SPECULATOR_ARGS_GRANITE20B_COBOL}
+fi
