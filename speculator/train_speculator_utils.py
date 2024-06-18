@@ -562,6 +562,19 @@ _gpt_bigcode_20b_config = GPTBigCodeConfig(
     ln_eps=1e-5,
 )
 
+_gpt_bigcode_20b_cobol_config = GPTBigCodeConfig(
+    src_vocab_size=49152,
+    emb_dim=6144,
+    nheads=48,
+    nlayers=52,
+    pad_id=0,
+    max_expected_seq_len=32768,
+    hidden_grow_factor=24576/6144,
+    p_dropout=0.1,
+    emb_dropout=0.1,
+    ln_eps=1e-5,
+)
+
 _gpt_bigcode_34b_config = GPTBigCodeConfig(
     src_vocab_size=49152,
     emb_dim=6144,
@@ -673,6 +686,7 @@ def _calico_hf_sd_to_fms_sd(hf_sd: Mapping) -> Mapping:
     return new_sd
 
 register_model("embedgpt_bigcode", "20b", _gpt_bigcode_factory_factory(_gpt_bigcode_20b_config))
+register_model("embedgpt_bigcode", "20b.cobol", _gpt_bigcode_factory_factory(_gpt_bigcode_20b_cobol_config))
 register_model("embedgpt_bigcode", "34b", _gpt_bigcode_factory_factory(_gpt_bigcode_34b_config))
 serialization.register_adapter("embedgpt_bigcode", "hf", _gptbigcode_hf_sd_to_fms_sd)
 

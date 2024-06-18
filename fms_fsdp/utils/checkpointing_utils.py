@@ -170,7 +170,7 @@ class Checkpointer:
         return None
 
     def load(
-        self, model, optimizer, dataloader, path="", reset_stepcount=False, strict=True
+        self, model, optimizer, dataloader, path="", reset_stepcount=False, strict=True, **kwargs,
     ):
         """
         Handle checkpoint loading for model/optimizer/dataloader from given path, according to arguments.
@@ -194,8 +194,14 @@ class Checkpointer:
             model_load_time = time.time()
             if os.path.isfile(load_path):
                 checkpoint_data = torch.load(load_path, map_location="cpu")
-                model.load_state_dict(checkpoint_data.get("model_state"), strict=strict)
-                model.to(self.local_rank)
+                if 'is_compiled' in kwargs.keys() and kwargs['is_compiled'] is True:
+                    model._orig_mod.load_state_dict(checkpoint_data.get("model_state"), strict=strict)
+                else:    
+                    model.load_state_dict(checkpoint_data.get("model_state"), strict=strict)
+                if self.model_auto_placement:
+                    model.to('cuda')
+                else:    
+                    model.to(self.local_rank)
                 self.report(
                     f"Checkpoint {load_path} is a single-file checkpoint containing only a model. Optimizer and dataloader are from scratch.",
                     model_load_time=time.time() - model_load_time,

@@ -122,8 +122,8 @@ def main(**kwargs):
         sharding_strategy_policy,
         apply_selective_ac,
         param_init_fn,
-    ) = get_policies(cfg, rank, LLaMABlock)
-    #) = get_policies(cfg, rank, GPTBigCodeBlock)
+    #) = get_policies(cfg, rank, LLaMABlock)
+    ) = get_policies(cfg, rank, GPTBigCodeBlock)
     #) = get_policies(cfg, rank, CalicoBlock)
 
     load_HF=False
@@ -214,9 +214,9 @@ def main(**kwargs):
         cfg.speculator_width,
         vocab_size,
         cfg.n_speculator_heads,
-        tie_emb=True,
-        tie_head=True,
-        tie_transition=True,
+        #tie_emb=True,
+        #tie_head=True,
+        #tie_transition=True,
         scale_input=True,
     )
     speculator.reset_parameters()
@@ -308,6 +308,7 @@ def main(**kwargs):
         optimizer,
         train_loader,
         path=os.path.join(cfg.ckpt_load_path, "checkpoints/"),
+        is_compiled=cfg.use_torch_compile,
     )
 
     # LR schedule
