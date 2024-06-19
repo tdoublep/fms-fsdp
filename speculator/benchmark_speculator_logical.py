@@ -139,6 +139,14 @@ parser.add_argument(
     help="number of top k predictions from each head to generate speculator candidate pool; should be same len as n_predict"
 )
 
+parser.add_argument(
+    "--speculator_load_type",
+    type=str,
+    choices=["singlefile", "registered_local", "hf_remote"],
+    default="singlefile",
+    help="how to load the speculator",
+)
+
 
 args = parser.parse_args()
 
@@ -192,17 +200,28 @@ tokenizer = tokenizers.get_tokenizer(args.tokenizer_path)
 model.eval()
 torch.set_grad_enabled(False)
 speculator = None
-if args.speculator_path is not None:
+#if args.speculator_path is not None:
+if args.speculator_load_type == "hf_remote":
+    print("loading speculator HF remote")
+    from fms_extras.models.hf.modeling_mlp_speculator import (
+        MLPSpeculatorPreTrainedModel, MLPSpeculatorConfig
+    )
+
+    speculator = MLPSpeculatorPreTrainedModel.from_pretrained(
+        args.speculator_path, #device_map=args.device_type
+    ).speculator
+else: #args.speculator_load_type == "singlefile": 
     print("loading speculator")
     speculator = MLPSpeculator(
         #model.config.emb_dim, 8192, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True, tie_wts=True
-        model.config.emb_dim, 4096, model.config.src_vocab_size, n_predict=args.n_predict
+        model.config.emb_dim, 4096, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True
     )
     speculator.load_state_dict(
         torch.load(args.speculator_path, map_location=device)["model_state"]
     )
-    speculator = speculator.to(device)
-    print("loading complete on rank", local_rank)
+
+speculator = speculator.to(device)
+print("loading complete on rank", local_rank)
 
 print("initializing paged cache")
 # cache setup
@@ -245,8 +264,8 @@ dataset = iter(dataset)
 data = []
 in_middle = False
 print("pulling data to build reusable prompt set")
-while len(data) < 10:
-#while len(data) < 256:
+#while len(data) < 2:
+while len(data) < 256:
     chunk = next(dataset)
     if not in_middle:
         data.append(chunk[: args.prompt_len])

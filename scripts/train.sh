@@ -241,15 +241,15 @@ MODEL_ARGS_GRANITE20B_COBOL="\
 --model_path=/gpfs/suneja/models/granite20b-cobol
 --model_arch=embedgpt_bigcode
 --model_variant=20b.cobol
---ckpt_load_path=/gpfs/suneja/checkpoints/granite-20b-cobol/
---ckpt_save_path=/gpfs/suneja/checkpoints/granite-20b-cobol/
+--ckpt_load_path=/gpfs/suneja/checkpoints/granite-20b-cobol-st1/
+--ckpt_save_path=/gpfs/suneja/checkpoints/granite-20b-cobol-st1/
 --logical_shards=768
 --sharding_strategy=tp
 --seq_length=8192
 --batch_size=1
 --report_interval=10
 --checkpoint_interval=300
---num_steps=4200
+--num_steps=3000
 --stage2_start_step=3000
 --stage2_batch_size=48
 --n_speculator_heads=4
@@ -266,7 +266,7 @@ MODEL_ARGS_GRANITE20B_COBOL="\
 #export CUDA_LAUNCH_BLOCKING=1
 DO_BACKGROUND=1
 
-if [ $DO_BACKGROUND -eq 1 ]
+if [ $DO_BACKGROUND -eq 0 ]
 then
     FOUT=nohup-`date +%s`.out
     echo $FOUT
