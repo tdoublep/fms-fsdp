@@ -220,6 +220,13 @@ else: #args.speculator_load_type == "singlefile":
         torch.load(args.speculator_path, map_location=device)["model_state"]
     )
 
+if local_rank == 0:
+    total_params = sum(
+        p.numel() for p in speculator.parameters() if p.requires_grad
+    )
+    print(f"speculator has {total_params / 1e6} Million params\n")
+
+
 speculator = speculator.to(device)
 print("loading complete on rank", local_rank)
 
@@ -264,8 +271,8 @@ dataset = iter(dataset)
 data = []
 in_middle = False
 print("pulling data to build reusable prompt set")
-#while len(data) < 2:
-while len(data) < 256:
+while len(data) < 10:
+#while len(data) < 256:
     chunk = next(dataset)
     if not in_middle:
         data.append(chunk[: args.prompt_len])

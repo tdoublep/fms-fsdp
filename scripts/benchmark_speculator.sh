@@ -91,13 +91,13 @@ SPECULATOR_ARGS_GRANITE_34B="\
 SPECULATOR_ARGS_GRANITE_34B_HF="\
 --architecture=paged_gpt_bigcode
 --variant=ibm.34b
---model_path="/gpfs/prangan/hub/models--ibm-granite--granite-34b-code-instruct/snapshots/20f67e1f9b6016f62652916d7e887c7250c46382/"
---tokenizer_path="/gpfs/prangan/hub/models--ibm-granite--granite-34b-code-instruct/snapshots/20f67e1f9b6016f62652916d7e887c7250c46382/"
+--model_path="/data/suneja/models/hub/models--ibm-granite--granite-34b-code-instruct/snapshots/20f67e1f9b6016f62652916d7e887c7250c46382/"
+--tokenizer_path="/data/suneja/models/hub/models--ibm-granite--granite-34b-code-instruct/snapshots/20f67e1f9b6016f62652916d7e887c7250c46382/" 
 --model_source=hf
-#--speculator_path="/gpfs/suneja/models/granite-34b-code-instruct-accelerator"
+--speculator_path="/data/suneja/models/granite-34b-code-instruct-accelerator"
 --speculator_load_type=hf_remote
 --prompt_len=64
---data_path="/gpfs/suneja/datasets/bluepile-granite/"
+--data_path="/data/suneja/datasets/bluepile-granite/"
 --subdata="lang=en/dataset=github_clean"
 --n_predict=5
 --n_candidates=5
@@ -173,5 +173,5 @@ else
     torchrun \
         --nproc_per_node=1 \
         speculator/benchmark_speculator_logical.py \
-        ${SPECULATOR_ARGS_GRANITE20B_COBOL}
+        ${SPECULATOR_ARGS_GRANITE_34B_HF}
 fi
