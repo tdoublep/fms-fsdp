@@ -91,19 +91,21 @@ SPECULATOR_ARGS_GRANITE_34B="\
 SPECULATOR_ARGS_GRANITE_34B_HF="\
 --architecture=paged_gpt_bigcode
 --variant=ibm.34b
---model_path="/data/suneja/models/hub/models--ibm-granite--granite-34b-code-instruct/snapshots/20f67e1f9b6016f62652916d7e887c7250c46382/"
---tokenizer_path="/data/suneja/models/hub/models--ibm-granite--granite-34b-code-instruct/snapshots/20f67e1f9b6016f62652916d7e887c7250c46382/" 
+--model_path="/gpfs/suneja/models/dmf_models/granite-34b-code-instruct-20240506"
+--tokenizer_path="/gpfs/suneja/models/dmf_models/granite-34b-code-instruct-20240506"
 --model_source=hf
---speculator_path="/data/suneja/models/granite-34b-code-instruct-accelerator"
+--speculator_path="/gpfs/suneja/models/granite-34b-code-instruct-accelerator"
 --speculator_load_type=hf_remote
 --prompt_len=64
---data_path="/data/suneja/datasets/bluepile-granite/"
+--data_path="/gpfs/suneja/datasets/bluepile-granite/"
 --subdata="lang=en/dataset=github_clean"
 --n_predict=5
 --n_candidates=5
 --threshes=[6,5,4,3,3]
 --seed=211
 "
+#--model_path="/data/suneja/models/hub/models--ibm-granite--granite-34b-code-instruct/snapshots/20f67e1f9b6016f62652916d7e887c7250c46382/"
+#--tokenizer_path="/data/suneja/models/hub/models--ibm-granite--granite-34b-code-instruct/snapshots/20f67e1f9b6016f62652916d7e887c7250c46382/" 
 
 SPECULATOR_ARGS_LLAMA3_70B="\
 --architecture=paged_llama
@@ -159,6 +161,55 @@ SPECULATOR_ARGS_GRANITE20B_COBOL="\
 #--speculator_path="/gpfs/suneja/checkpoints/granite-20b-cobol-1/checkpoints/step_3601_ckp.pth"
 
 
+SPECULATOR_ARGS_LLAMA3_8B_HF="\
+--architecture=paged_llama
+--variant=llama3.8b
+--model_path=/gpfs/suneja/models/dmf_models/llama-3-8b-instruct-20240418
+--tokenizer_path=/gpfs/suneja/models/dmf_models/llama-3-8b-instruct-20240418
+--model_source=hf
+--speculator_path="/gpfs/suneja/models/llama3-8b-accelerator"
+--speculator_load_type=hf_remote
+--prompt_len=64
+--data_path="/gpfs/suneja/datasets/llama3-common-crawl/rel0_7/lang=en"
+--subdata="'dataset=commoncrawl'"
+--n_predict=4
+--n_candidates=5
+--threshes=[6,4,3,3]
+--seed=211
+"
+
+SPECULATOR_ARGS_GRANITE_20B_HF="\
+--architecture=paged_gpt_bigcode
+--variant=ibm.20b
+--model_path="/gpfs/suneja/models/dmf_models/granite-20b-code-instruct-20240506"
+--tokenizer_path="/gpfs/suneja/models/dmf_models/granite-20b-code-instruct-20240506"
+--model_source=hf
+--speculator_path="/gpfs/suneja/models/granite-20b-code-instruct-accelerator"
+--prompt_len=64
+--data_path="/gpfs/suneja/datasets/bluepile-granite/lang\=en/"
+--subdata="dataset=github_clean"
+--speculator_load_type=hf_remote
+--threshes=[6,4,3,3]
+--seed=211
+"
+
+SPECULATOR_ARGS_LLAMA2_13B_HF="\
+--architecture=paged_llama
+--variant=13b
+--model_path=/gpfs/suneja/models/dmf_models/llama-2-13b-chat-20231109
+--tokenizer_path=/gpfs/suneja/models/dmf_models/llama-2-13b-chat-20231109
+--model_source=hf
+--speculator_path="/gpfs/suneja/models/llama-13b-accelerator"
+--speculator_load_type=hf_remote
+--prompt_len=64
+--data_path="/gpfs/suneja/datasets/bp7_llama2/lang=en"
+--subdata="'dataset=PG19'"
+--n_predict=3
+--n_candidates=5
+--threshes=[6,4,3]
+--seed=211
+"
+
 DO_BACKGROUND=0
 
 if [ $DO_BACKGROUND -eq 1 ]
@@ -173,5 +224,5 @@ else
     torchrun \
         --nproc_per_node=1 \
         speculator/benchmark_speculator_logical.py \
-        ${SPECULATOR_ARGS_GRANITE_34B_HF}
+        ${SPECULATOR_ARGS_LLAMA2_13B_HF}
 fi
