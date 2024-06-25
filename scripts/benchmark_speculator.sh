@@ -55,6 +55,21 @@ SPECULATOR_ARGS_GRANITE_8B="\
 "
 #--speculator_path="/gpfs/prangan/backup-ckptx/checkpoints/step_15001_ckp.pth"
 
+SPECULATOR_ARGS_GRANITE_8B_HF="\
+--architecture=paged_llama
+--variant=calico.8b.code
+--model_path="/gpfs/suneja/models/dmf_models/granite-8b-code-instruct-20240509"
+--tokenizer_path="/gpfs/suneja/models/dmf_models/granite-8b-code-instruct-20240509"
+--speculator_path="/gpfs/suneja/models/granite-8b-code-instruct-accelerator"
+--speculator_load_type=hf_remote
+--model_source=hf
+--prompt_len=64
+--data_path="/gpfs/suneja/datasets/bluepile-granite/"
+--subdata="lang=en/dataset=github_clean"
+--threshes=[6,5,4,3,3]
+--seed=211
+"
+
 #need paged_gpt_bigcode + 3b changes to fms-extras beanch
 SPECULATOR_ARGS_GRANITE_3B="\
 --architecture=paged_llama
@@ -62,6 +77,23 @@ SPECULATOR_ARGS_GRANITE_3B="\
 --model_path="/gpfs/prangan/hub/models--ibm-granite--granite-3b-code-instruct/snapshots/4420bfb5a3361ab4714bbd653848ef1a819d9f5b/"
 --tokenizer_path="/gpfs/prangan/hub/models--ibm-granite--granite-3b-code-instruct/snapshots/4420bfb5a3361ab4714bbd653848ef1a819d9f5b/"
 --speculator_path="/gpfs/prangan/ckpts/granite_3b_stage1/checkpoints/step_21001_ckp.pth"
+--model_source=hf
+--prompt_len=64
+--data_path="/gpfs/suneja/datasets/bluepile-granite/"
+--subdata="lang=en/dataset=github_clean"
+--n_predict=5
+--n_candidates=5
+--threshes=[6,5,4,3,3]
+--seed=211
+"
+
+SPECULATOR_ARGS_GRANITE_3B_HF="\
+--architecture=paged_llama
+--variant=calico.3b.code
+--model_path="/gpfs/suneja/models/dmf_models/granite-3b-code-instruct-20240509"
+--tokenizer_path="/gpfs/suneja/models/dmf_models/granite-3b-code-instruct-20240509"
+--speculator_path="/gpfs/suneja/checkpoints/granite-3b/checkpoints/granite-3b-code-instruct/accelerator"
+--speculator_load_type=hf_remote
 --model_source=hf
 --prompt_len=64
 --data_path="/gpfs/suneja/datasets/bluepile-granite/"
@@ -224,5 +256,5 @@ else
     torchrun \
         --nproc_per_node=1 \
         speculator/benchmark_speculator_logical.py \
-        ${SPECULATOR_ARGS_LLAMA2_13B_HF}
+        ${SPECULATOR_ARGS_GRANITE_8B_HF}
 fi
