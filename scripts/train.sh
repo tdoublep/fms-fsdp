@@ -5,6 +5,31 @@
 
 export FI_EFA_SET_CUDA_SYNC_MEMOPS=0
 
+MODEL_ARGS_LLAMA2_70B="\
+--model_path=/gpfs/suneja/models/Llama-2-70b-chat-hf
+--model_arch=embedllama
+--model_variant=llama2.70b
+--ckpt_load_path=/gpfs/suneja/checkpoints/llama2-70b-tp-wtinitfix
+--ckpt_save_path=/gpfs/suneja/checkpoints/llama2-70b-tp-wtinitfix
+--logical_shards=768
+--sharding_strategy=tp
+--seq_length=4096
+--batch_size=2
+--report_interval=10
+--checkpoint_interval=5000
+--num_steps=18837
+--stage2_start_step=15000
+--stage2_batch_size=36
+--n_speculator_heads=4
+--speculator_width=8192
+--use_torch_compile=True
+--learning_rate=6e-4
+--seed=42
+--data_path=/gpfs1/users/suneja/datasets/bpv7_high_quality_rerun_fuzzy_deduped_incomplete/lang=en/
+--datasets="'dataset=commoncrawl'"
+--weights="'1'"
+"
+
 MODEL_ARGS="\
 --model_path=/gpfs/llama3/hf/70b_instruction_tuned
 --model_arch=embedllama
@@ -18,7 +43,7 @@ MODEL_ARGS="\
 --report_interval=10
 --checkpoint_interval=5000
 --num_steps=21000
---stage2_start_step=15000
+--stage2_start_step=30
 --stage2_batch_size=36
 --n_speculator_heads=4
 --speculator_width=8192
@@ -85,12 +110,12 @@ MODEL_ARGS0="\
 "
 #--num_steps=15000
 
-MODEL_ARGS1="\
+MODEL_ARGS_LLAMA2_7B="\
 --model_path=/gpfs/suneja/models/hub/models--meta-llama--Llama-2-7b-chat-hf/snapshots/f5db02db724555f92da89c216ac04704f23d4590/
 --model_arch=embedllama
 --model_variant=7b
---ckpt_load_path=/gpfs/suneja/checkpoints/llama2-7b-tmp-1
---ckpt_save_path=/gpfs/suneja/checkpoints/llama2-7b-tmp-1
+--ckpt_load_path=/gpfs/suneja/checkpoints/llama2-7b-tmp-2
+--ckpt_save_path=/gpfs/suneja/checkpoints/llama2-7b-tmp-2
 --logical_shards=768
 --sharding_strategy=hsdp
 --seq_length=4096
@@ -105,12 +130,14 @@ MODEL_ARGS1="\
 --use_torch_compile=False
 --learning_rate=1e-3
 --seed=42
---data_path=/gpfs/suneja/datasets/bp7_llama2/lang=en
---datasets="'dataset=arxiv'"
+--data_path=/gpfs1/users/suneja/datasets/bpv7_high_quality_rerun_fuzzy_deduped_incomplete/lang=en/
+--datasets="'dataset=commoncrawl'"
 --weights="'1'"
 "
 #--data_path=/gpfs/v7_high_quality_rerun_fuzzy_deduped/lang=en
 #--datasets="'dataset=commoncrawl'"
+#--data_path=/gpfs/suneja/datasets/bp7_llama2/lang=en
+#--datasets="'dataset=arxiv'"
 
 MODEL_ARGS2="\
 --model_path=/gpfs/prangan/granite-20b-code-instruct
@@ -262,11 +289,36 @@ MODEL_ARGS_GRANITE20B_COBOL="\
 --weights='1,1'
 "
 
+MODEL_ARGS_GRANITE_13B="\
+--model_path=/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/
+--model_arch=embedgpt_bigcode
+--model_variant=13b.chat.v2.1
+--ckpt_load_path=/gpfs/suneja/checkpoints/granite-13b-chat-v2.1
+--ckpt_save_path=/gpfs/suneja/checkpoints/granite-13b-chat-v2.1
+--logical_shards=768
+--sharding_strategy=tp
+--seq_length=8192
+--batch_size=2
+--report_interval=10
+--checkpoint_interval=5000
+--num_steps=15000
+--stage2_start_step=100
+--stage2_batch_size=96
+--n_speculator_heads=5
+--speculator_width=5632
+--use_torch_compile=False
+--learning_rate=1e-3
+--seed=42
+--data_path=/gpfs1/users/suneja/datasets/bluepile-processing/rel0_4/tokens_gpt_neox/
+--datasets="'dataset=commoncrawl','dataset=github_clean'"
+--weights="'6320','940'"
+"
+
 #export TORCH_LOGS="dynamo,recompiles"
 #export CUDA_LAUNCH_BLOCKING=1
 DO_BACKGROUND=1
 
-if [ $DO_BACKGROUND -eq 0 ]
+if [ $DO_BACKGROUND -eq 1 ]
 then
     FOUT=nohup-`date +%s`.out
     echo $FOUT
@@ -274,13 +326,13 @@ then
     nohup torchrun \
         --nproc_per_node=8 \
         speculator/train_speculator.py \
-        ${MODEL_ARGS_GRANITE20B_COBOL}\
+        ${MODEL_ARGS_LLAMA2_70B} \
         >$FOUT &
 else
     torchrun \
         --nproc_per_node=8 \
         speculator/train_speculator.py \
-        ${MODEL_ARGS_GRANITE20B_COBOL}
+        ${MODEL_ARGS_LLAMA2_7B}
 fi        
 
 

@@ -151,7 +151,17 @@ def stage1_loss(cfg, model, speculator, base_model_input, input, loss_fn, ddp_st
         )
     if cfg.sharding_strategy == 'tp':
         embeds = embeds.chunk(base_model_mesh['tp'].size())[base_model_mesh['tp'].get_local_rank()]
+
     preds = speculator(embeds.detach(), input[:, 1:])
+    if False:
+        with torch.no_grad():
+            if rank == 0 or rank == 1:
+                #torch.save(embeds.detach(), 'step1_embed_tensor_rank0.pt')
+                print(f"{rank} embeds.std: {embeds.std()}")
+                print(f"{rank} speculator-std {speculator.emb[0].weight.std()}")
+                print(f"{rank} projection-std {speculator.proj[0].weight.std()}")
+                print(f"{rank} head-std {speculator.head[0].weight.std()}")
+                print(f"{rank} preds-std: {[x.std() for x in preds]}")
 
     losses = []
     for i in range(preds.size(0)):
@@ -312,7 +322,7 @@ def train_speculator(
             )
 
         loss.backward()
-        #ddp_stats[0] += speculator.clip_grad_norm_(cfg.grad_clip_thresh).item()
+        ddp_stats[0] += speculator.clip_grad_norm_(cfg.grad_clip_thresh).item()
         optimizer.step()
         scheduler.step()
 
@@ -549,6 +559,19 @@ def _llama_factory_factory(config):
 #        return EmbedMixtral(config, **kwargs)
 #    return factory
 
+_gpt_bigcode_13b_chat_v2_1_config = GPTBigCodeConfig(
+    src_vocab_size=50304,
+    emb_dim=5632,
+    nheads=44,
+    nlayers=40,
+    pad_id=0,
+    max_expected_seq_len=8192,
+    hidden_grow_factor=22528/5632,
+    p_dropout=0.1,
+    emb_dropout=0.1,
+    ln_eps=1e-5,
+)
+
 _gpt_bigcode_20b_config = GPTBigCodeConfig(
     src_vocab_size=49152,
     emb_dim=6144,
@@ -685,6 +708,7 @@ def _calico_hf_sd_to_fms_sd(hf_sd: Mapping) -> Mapping:
 
     return new_sd
 
+register_model("embedgpt_bigcode", "13b.chat.v2.1", _gpt_bigcode_factory_factory(_gpt_bigcode_13b_chat_v2_1_config))
 register_model("embedgpt_bigcode", "20b", _gpt_bigcode_factory_factory(_gpt_bigcode_20b_config))
 register_model("embedgpt_bigcode", "20b.cobol", _gpt_bigcode_factory_factory(_gpt_bigcode_20b_cobol_config))
 register_model("embedgpt_bigcode", "34b", _gpt_bigcode_factory_factory(_gpt_bigcode_34b_config))
@@ -697,6 +721,7 @@ serialization.register_adapter("embedcalico", "hf", _calico_hf_sd_to_fms_sd)
 register_model("embedllama", "7b", _llama_factory_factory(get_model_config("7b")))
 register_model("embedllama", "8b", _llama_factory_factory(get_model_config("llama3_8b")))
 register_model("embedllama", "34b", _llama_factory_factory(get_model_config("34b")))
+register_model("embedllama", "llama2.70b", _llama_factory_factory(get_model_config("70b")))
 register_model("embedllama", "70b", _llama_factory_factory(get_model_config("llama3_70b")))
 serialization.register_adapter("embedllama", "hf", _llama_hf_sd_to_fms_sd) 
 

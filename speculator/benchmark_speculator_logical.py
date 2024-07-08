@@ -200,8 +200,9 @@ tokenizer = tokenizers.get_tokenizer(args.tokenizer_path)
 model.eval()
 torch.set_grad_enabled(False)
 speculator = None
-#if args.speculator_path is not None:
-if args.speculator_load_type == "hf_remote":
+if args.speculator_path is None:
+    speculator = None
+elif args.speculator_load_type == "hf_remote":
     print("loading speculator HF remote")
     from fms_extras.models.hf.modeling_mlp_speculator import (
         MLPSpeculatorPreTrainedModel, MLPSpeculatorConfig
@@ -213,21 +214,22 @@ if args.speculator_load_type == "hf_remote":
 else: #args.speculator_load_type == "singlefile": 
     print("loading speculator")
     speculator = MLPSpeculator(
-        #model.config.emb_dim, 8192, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True, tie_wts=True
-        model.config.emb_dim, 4096, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True
+        #model.config.emb_dim, 8192, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True, tie_weights=True
+        model.config.emb_dim, 5632, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True, tie_weights=True
     )
     speculator.load_state_dict(
         torch.load(args.speculator_path, map_location=device)["model_state"]
     )
 
-if local_rank == 0:
-    total_params = sum(
-        p.numel() for p in speculator.parameters() if p.requires_grad
-    )
-    print(f"speculator has {total_params / 1e6} Million params\n")
+if speculator:
+    if local_rank == 0:
+        total_params = sum(
+            p.numel() for p in speculator.parameters() if p.requires_grad
+        )
+        print(f"speculator has {total_params / 1e6} Million params\n")
 
+    speculator = speculator.to(device)
 
-speculator = speculator.to(device)
 print("loading complete on rank", local_rank)
 
 print("initializing paged cache")
@@ -271,8 +273,8 @@ dataset = iter(dataset)
 data = []
 in_middle = False
 print("pulling data to build reusable prompt set")
-while len(data) < 2:
-#while len(data) < 256:
+#while len(data) < 2:
+while len(data) < 256:
     chunk = next(dataset)
     if not in_middle:
         data.append(chunk[: args.prompt_len])
@@ -345,7 +347,7 @@ def infer(ids, k, warmup, model, decode_model, speculator):
     if not warmup:
         total_tokens = 0
         for i in range(len(result)):
-            print_result(result[i], ids[i], n_steps)
+            #print_result(result[i], ids[i], n_steps)
             total_tokens += len(result[i]) - len(ids[i])
         avg_tokens = total_tokens / len(result)
         return generated_token_time_out / avg_tokens, avg_tokens / n_steps

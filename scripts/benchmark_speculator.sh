@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SPECULATOR_ARGS_LLAMA="\
+SPECULATOR_ARGS_LLAMA_AWS="\
 --architecture=paged_llama
 --variant=7b
 --model_path="/lustre/llama_weights/hf/7B-F/"
@@ -11,6 +11,23 @@ SPECULATOR_ARGS_LLAMA="\
 --data_path="/lustre/bluepile-processing/rel0_7/tokens/llama2/high_quality_rerun_fuzzy_deduped/"
 --subdata="lang\=en/dataset\=webhose/"
 "
+
+SPECULATOR_ARGS_LLAMA2_7B="\
+--architecture=paged_llama
+--variant=7b
+--model_path="/gpfs/suneja/models/hub/models--meta-llama--Llama-2-7b-chat-hf/snapshots/f5db02db724555f92da89c216ac04704f23d4590/"
+--tokenizer="/gpfs/suneja/models/hub/models--meta-llama--Llama-2-7b-chat-hf/snapshots/f5db02db724555f92da89c216ac04704f23d4590/"
+--model_source=hf
+--speculator_path="/gpfs/suneja/checkpoints/llama2-7b-tmp-1/checkpoints/step_11200_ckp.pth"
+--prompt_len=64
+--data_path="/gpfs1/users/suneja/datasets/bpv7_high_quality_rerun_fuzzy_deduped_incomplete/lang=en/"
+--subdata="dataset=commoncrawl"
+--n_predict=3
+--n_candidates=5
+--threshes=[6,4,3]
+--seed=211
+"
+
 
 SPECULATOR_ARGS_GRANITE="\
 --architecture=paged_gpt_bigcode
@@ -242,6 +259,40 @@ SPECULATOR_ARGS_LLAMA2_13B_HF="\
 --seed=211
 "
 
+
+SPECULATOR_ARGS_LLAMA2_70B="\
+--architecture=paged_llama
+--variant=70b
+--model_path="/gpfs/suneja/models/Llama-2-70b-chat-hf"
+--tokenizer_path="/gpfs/suneja/models/Llama-2-70b-chat-hf"
+--model_source=hf
+--speculator_path="/gpfs/suneja/checkpoints/llama2-70b-tp-wtinitfix/checkpoints/step_18838_ckp.pth"
+--prompt_len=64
+--data_path="/gpfs1/users/suneja/datasets/bpv7_high_quality_rerun_fuzzy_deduped_incomplete/lang=en/"
+--subdata="'dataset=commoncrawl'"
+--n_predict=4
+--n_candidates=5
+--threshes=[6,4,3,3]
+--seed=211
+"
+
+SPECULATOR_ARGS_GRANITE_13B="\
+--architecture=paged_gpt_bigcode
+--variant=ibm.13b
+--model_path="/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/"
+--tokenizer_path="/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/"
+--speculator_path="/gpfs/suneja/checkpoints/granite-13b-chat-v2.1/checkpoints/step_15001_ckp.pth"
+--model_source=hf
+--prompt_len=64
+--data_path="/gpfs1/users/suneja/datasets/bluepile-processing/rel0_4/tokens_gpt_neox/"
+--subdata="dataset=commoncrawl"
+--seed=211
+--n_predict=5
+--n_candidates=5
+--threshes=[6,5,4,3,3]
+"
+
+
 DO_BACKGROUND=0
 
 if [ $DO_BACKGROUND -eq 1 ]
@@ -249,12 +300,12 @@ then
     nohup torchrun \
         --nproc_per_node=8 \
         speculator/benchmark_speculator_logical.py \
-        ${SPECULATOR_ARGS_LLAMA3_70B}\
+        ${SPECULATOR_ARGS_LLAMA2_70B}\
         > nohup.out &
 else
     export CUDA_VISIBLE_DEVICES=1
     torchrun \
         --nproc_per_node=1 \
         speculator/benchmark_speculator_logical.py \
-        ${SPECULATOR_ARGS_GRANITE_8B_HF}
+        ${SPECULATOR_ARGS_GRANITE_13B}
 fi

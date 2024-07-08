@@ -104,7 +104,8 @@ def main(**kwargs):
         base_model_mesh = None
         speculator_mesh = None
     else:
-        base_model_mesh = setup(dp=world_size//8, tp=8)
+        #base_model_mesh = setup(dp=world_size//8, tp=8)
+        base_model_mesh = setup(dp=world_size//4, tp=4)
         speculator_mesh = dist.device_mesh.init_device_mesh('cuda', (world_size,))
         #base_model_mesh = setup(dp=2, tp=4) #simulated multi node in a single node
         #speculator_mesh = dist.device_mesh.init_device_mesh('cuda', (8,))
@@ -189,7 +190,7 @@ def main(**kwargs):
     if do_model_eval:
         model.eval()
         torch.set_grad_enabled(False)    
-        test_model(rank, model, cfg.model_arch, cfg, prompt_type='code')
+        test_model(rank, model, cfg.model_arch, cfg, prompt_type='chat')
         exit(0)
     
     if hasattr(model.config, "emb_dim"):
@@ -217,6 +218,7 @@ def main(**kwargs):
         #tie_emb=True,
         #tie_head=True,
         #tie_transition=True,
+        tie_weights=True,
         scale_input=True,
     )
     speculator.reset_parameters()
@@ -257,6 +259,11 @@ def main(**kwargs):
         ),
         device_mesh=speculator_mesh if cfg.sharding_strategy == 'tp' else None,
     )
+    with torch.no_grad():
+        if rank == 0:
+            print(f"{rank} post-FSDP speculator-std {speculator.emb[0].weight.std()}")
+            print(f"{rank} post-FSDP projection-std {speculator.proj[0].weight.std()}")
+            print(f"{rank} post-FSDP head-std {speculator.head[0].weight.std()}")
 
     if load_HF:
         model = FSDP(
