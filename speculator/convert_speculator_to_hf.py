@@ -26,7 +26,7 @@ def convert_speculator(path, name, config, base_model_hf_repo):
                          top_k_tokens_per_head=top_k_tokens_per_head,
                          n_candidates=config['n_predict'],
                          scale_input=config['scale_input'],
-                         tie_wts=config['tie_wts'])
+                         tie_weights=config['tie_weights'])
     print([i for i,j in hf_model.named_parameters()])
     hf_model.config.torch_dtype = torch.float16
     tokenizer = AutoTokenizer.from_pretrained(base_model_hf_repo)
@@ -56,7 +56,7 @@ def get_speculator_info_granite3b():
         "vocab_size": 49152,
         "n_predict": 5,
         "inner_dim": 4096,
-        "tie_wts": True
+        "tie_weights": True
     }
     base_model_hf_repo="ibm-granite/granite-3b-code-instruct"
     return path, name, config, base_model_hf_repo
@@ -71,7 +71,7 @@ def get_speculator_info_granite34b():
         "n_predict": 5,
         "inner_dim": 6144,
         "scale_input": True,
-        "tie_wts": True
+        "tie_weights": True
     }
     base_model_hf_repo="ibm-granite/granite-34b-code-instruct"
     return path, name, config, base_model_hf_repo
@@ -87,7 +87,7 @@ def get_speculator_info_codellama34b():
         "n_predict": 5,
         "inner_dim": 8192,
         "scale_input": True,
-        "tie_wts": True
+        "tie_weights": True
     }
     base_model_hf_repo="codellama/CodeLlama-34b-Instruct-hf"
     return path, name, config, base_model_hf_repo
@@ -95,19 +95,65 @@ def get_speculator_info_codellama34b():
 
 def get_speculator_info_llama3_70b():
     path = "/gpfs/suneja/checkpoints/llama3-70b-ropefixed-tie_wt-scalednorm-4node-backup/checkpoints/step_11186_ckp.pth"
-    name = "llama3.70b.code.961mm"
+    name = "llama3.70b.961mm"
     config = {
         "emb_dim": 8192,
         "vocab_size": 128256,
         "n_predict": 4,
         "inner_dim": 3584,
         "scale_input": True,
-        "tie_wts": True
+        "tie_weights": True
     }
     base_model_hf_repo="meta-llama/Meta-Llama-3-70B-Instruct"
     return path, name, config, base_model_hf_repo
 
-path, name, config, base_model_hf_repo = get_speculator_info_granite34b()
+
+def get_speculator_info_llama2_70b():
+    path = "/gpfs/suneja/checkpoints/llama2-70b-tp-wtinitfix/checkpoints/step_18838_ckp.pth"
+    name = "llama2.70b.658m"
+    config = {
+        "emb_dim": 8192,
+        "vocab_size": 32000,
+        "n_predict": 4,
+        "inner_dim": 8192,
+        "scale_input": True,
+        "tie_weights": True
+    }
+    base_model_hf_repo="meta-llama/Llama-2-70b-chat-hf"
+    return path, name, config, base_model_hf_repo
+
+
+def get_speculator_info_granite_13b():
+    path = "/gpfs/suneja/checkpoints/granite-13b-chat-v2.1-cconly/checkpoints/step_17294_ckp.pth"
+    name = "gpt_bigcode.13b.630m"
+    config = {
+        "emb_dim": 5632,
+        "vocab_size": 50304,
+        "n_predict": 4,
+        "inner_dim": 5632,
+        "scale_input": True,
+        "tie_weights": True
+    }
+    base_model_hf_repo="/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/"
+    return path, name, config, base_model_hf_repo
+
+
+def get_speculator_info_llama3_70b_specu2_to_specu1():
+    path = "/gpfs/suneja/checkpoints/llama3-70b-specu2-wtinitfix/checkpoints/step_14212_ckp_specu_v1.pth"
+    name = "llama3.70b.2_2b"
+    config = {
+        "emb_dim": 8192,
+        "vocab_size": 128256,
+        "n_predict": 4,
+        "inner_dim": 8192,
+        "scale_input": True,
+        "tie_weights": True
+    }
+    base_model_hf_repo="/gpfs/llama3/hf/70b_instruction_tuned"
+    return path, name, config, base_model_hf_repo
+
+
+path, name, config, base_model_hf_repo = get_speculator_info_llama3_70b_specu2_to_specu1()
 path = register_speculator(path, name, config)
 convert_speculator(path, name, config, base_model_hf_repo)
 

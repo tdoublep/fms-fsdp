@@ -190,7 +190,7 @@ model = get_model(
     device_type=args.device_type,
     source=args.model_source,
     #distributed_strategy=distr_param,
-    #distributed_strategy="fsdp",
+    distributed_strategy="fsdp",
     #group=dist.group.WORLD,
     #norm_eps=1e-6,
 )
@@ -214,9 +214,11 @@ elif args.speculator_load_type == "hf_remote":
 else: #args.speculator_load_type == "singlefile": 
     print("loading speculator")
     speculator = MLPSpeculator(
-        #model.config.emb_dim, 8192, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True, tie_weights=True
-        model.config.emb_dim, 5632, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True, tie_weights=True
+        model.config.emb_dim, 8192, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True, tie_weights=True
+        #model.config.emb_dim, 4096, model.config.src_vocab_size-1, n_predict=args.n_predict, scale_input=True #granite-20b-cobol-ptv18
+        #model.config.emb_dim, 4096, model.config.src_vocab_size, n_predict=args.n_predict, scale_input=True, tie_weights=True
     )
+    #speculator.reset_parameters()
     speculator.load_state_dict(
         torch.load(args.speculator_path, map_location=device)["model_state"]
     )
@@ -258,8 +260,8 @@ print("cache initialization complete on rank", local_rank)
 print("loading dataset", args.data_path)
 dataset = Streaming_Doc_Dataset(
     args.data_path,
-    local_rank, #for non fsdp model
-    #0, #for fsdp model
+    #local_rank, #for non fsdp model
+    0, #for fsdp model
     world_size,
     -1,
     datasets=[
@@ -273,8 +275,8 @@ dataset = iter(dataset)
 data = []
 in_middle = False
 print("pulling data to build reusable prompt set")
-#while len(data) < 2:
-while len(data) < 256:
+#while len(data) < 4:
+while len(data) < 100:
     chunk = next(dataset)
     if not in_middle:
         data.append(chunk[: args.prompt_len])
@@ -344,6 +346,11 @@ def infer(ids, k, warmup, model, decode_model, speculator):
             do_sample=False,
             decode_model=decode_model,
         )
+
+    if warmup:
+        for i in range(len(result)):
+            print_result(result[i], ids[i], n_steps)
+        
     if not warmup:
         total_tokens = 0
         for i in range(len(result)):

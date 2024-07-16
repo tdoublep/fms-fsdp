@@ -197,7 +197,7 @@ SPECULATOR_ARGS_GRANITE20B_COBOL="\
 --model_path="/gpfs/prangan/granite20b-cobol"
 --tokenizer_path="/gpfs/prangan/granite20b-cobol"
 --model_source=hf
---speculator_path="/gpfs/suneja/checkpoints/granite-20b-cobol-st1/checkpoints/step_3001_ckp.pth"
+--speculator_path="/gpfs/suneja/checkpoints/granite-20b-cobol-1/checkpoints/step_3601_ckp.pth"
 --prompt_len=64
 --data_path="/gpfs/prangan/data_g20bc_tokenizer/code_data"
 --subdata="dataset=ptv15_to_unsupervised"
@@ -207,7 +207,27 @@ SPECULATOR_ARGS_GRANITE20B_COBOL="\
 --seed=211
 "
 #--speculator_path="/gpfs/suneja/checkpoints/grantite-20b-code-instruct-v1-speculator/step_42001_ckp.pth"
-#--speculator_path="/gpfs/suneja/checkpoints/granite-20b-cobol-1/checkpoints/step_3601_ckp.pth"
+#--speculator_path="/gpfs/suneja/checkpoints/granite-20b-cobol-st1/checkpoints/step_3001_ckp.pth"
+
+
+SPECULATOR_ARGS_GRANITE20B_COBOL_PTV18="\
+--architecture=paged_gpt_bigcode
+--variant=ibm.20b.cobol.ptv18
+--model_path="/gpfs/suneja/models/granite-20b-cobol-ptv18-4-8k-8k-10Btok"
+--tokenizer_path="/gpfs/suneja/models/granite-20b-cobol-ptv18-4-8k-8k-10Btok"
+--model_source=hf
+--speculator_path="/gpfs/suneja/checkpoints/granite-20b-cobol-1/checkpoints/step_3601_ckp.pth"
+--prompt_len=64
+--data_path="/gpfs/prangan/data_g20bc_ptv18/code_data"
+--subdata="ptv18_to_supervised"
+--n_predict=4
+--n_candidates=5
+--threshes=[6,4,3,3]
+--seed=211
+"
+#--data_path="/gpfs/prangan/data_g20bc_tokenizer/code_data"
+#--subdata="dataset=ptv15_to_supervised"
+#--subdata="dataset=ptv15_to_unsupervised"
 
 
 SPECULATOR_ARGS_LLAMA3_8B_HF="\
@@ -291,21 +311,109 @@ SPECULATOR_ARGS_GRANITE_13B="\
 --n_candidates=5
 --threshes=[6,5,4,3,3]
 "
+#--subdata="dataset=github_clean"
 
 
-DO_BACKGROUND=0
+SPECULATOR_ARGS_GRANITE_13B_CCONLY="\
+--architecture=paged_gpt_bigcode
+--variant=ibm.13b
+--model_path="/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/"
+--tokenizer_path="/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/"
+--speculator_path="/gpfs/suneja/checkpoints/granite-13b-chat-v2.1-cconly/checkpoints/step_17294_ckp.pth"
+--model_source=hf
+--prompt_len=64
+--data_path="/gpfs1/users/suneja/datasets/bluepile-processing/rel0_4/tokens_gpt_neox/"
+--subdata="dataset=github_clean"
+--seed=211
+--n_predict=4
+--n_candidates=5
+--threshes=[6,4,3,3]
+"
+#--subdata="dataset=commoncrawl"
+
+
+SPECULATOR_ARGS_GRANITE_13B_CCONLY_HF="\
+--architecture=paged_gpt_bigcode
+--variant=ibm.13b
+--model_path="/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/"
+--tokenizer_path="/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/"
+--speculator_path="/gpfs/suneja/checkpoints/granite-13b-chat-v2.1-cconly/checkpoints/accelerator"
+--speculator_load_type=hf_remote
+--model_source=hf
+--prompt_len=64
+--data_path="/gpfs1/users/suneja/datasets/bluepile-processing/rel0_4/tokens_gpt_neox/"
+--subdata="dataset=commoncrawl"
+--seed=211
+--n_predict=4
+--n_candidates=5
+--threshes=[6,4,3,3]
+"
+
+SPECULATOR_ARGS_LLAMA3_70B_SPECU2_CONVERTED="\
+--architecture=paged_llama
+--variant=llama3.70b
+--model_path="/gpfs/llama3/hf/70b_instruction_tuned"
+--tokenizer_path="/gpfs/llama3/hf/70b_instruction_tuned"
+--model_source=hf
+--speculator_path="/gpfs/suneja/checkpoints/llama3-70b-specu2-wtinitfix/checkpoints/step_14212_ckp_specu_v1.pth"
+--prompt_len=64
+--data_path="/gpfs"
+--subdata="'fineweb-edu'"
+--n_predict=4
+--n_candidates=5
+--threshes=[6,4,3,3]
+--seed=211
+"
+
+
+SPECULATOR_ARGS_LLAMA3_70B_SPECU2_CONVERTED_HF="\
+--architecture=paged_llama
+--variant=llama3.70b
+--model_path="/gpfs/llama3/hf/70b_instruction_tuned"
+--tokenizer_path="/gpfs/llama3/hf/70b_instruction_tuned"
+--model_source=hf
+--speculator_path="/gpfs/suneja/checkpoints/llama3-70b-specu2-wtinitfix/checkpoints/70b_instruction_tuned/accelerator"
+--speculator_load_type=hf_remote
+--prompt_len=64
+--data_path="/gpfs"
+--subdata="'fineweb-edu'"
+--n_predict=4
+--n_candidates=5
+--threshes=[6,4,3,3]
+--seed=211
+"
+
+SPECULATOR_ARGS_LLAMA2_7B_SPECUV1_TMP="\
+--architecture=paged_llama
+--variant=7b
+--model_path="/gpfs/suneja/models/hub/models--meta-llama--Llama-2-7b-chat-hf/snapshots/f5db02db724555f92da89c216ac04704f23d4590/"
+--tokenizer="/gpfs/suneja/models/hub/models--meta-llama--Llama-2-7b-chat-hf/snapshots/f5db02db724555f92da89c216ac04704f23d4590/"
+--model_source=hf
+--speculator_path="/gpfs/suneja/checkpoints/llama2-7b-specuv2-tmp/checkpoints/step_21_ckp_specu_v1.pth"
+--prompt_len=64
+--data_path="/gpfs1/users/suneja/datasets/bpv7_high_quality_rerun_fuzzy_deduped_incomplete/lang=en/"
+--subdata="dataset=commoncrawl"
+--n_candidates=1
+--n_predict=3
+--threshes=[6,4,3]
+--seed=211
+"
+#--speculator_path="/gpfs/suneja/checkpoints/llama2-7b-specuv1-tmp/checkpoints/step_21_ckp.pth"
+
+
+DO_BACKGROUND=1
 
 if [ $DO_BACKGROUND -eq 1 ]
 then
     nohup torchrun \
         --nproc_per_node=8 \
         speculator/benchmark_speculator_logical.py \
-        ${SPECULATOR_ARGS_LLAMA2_70B}\
+        ${SPECULATOR_ARGS_LLAMA3_70B_SPECU2_CONVERTED_HF}\
         > nohup.out &
 else
-    export CUDA_VISIBLE_DEVICES=1
+    export CUDA_VISIBLE_DEVICES=0
     torchrun \
         --nproc_per_node=1 \
         speculator/benchmark_speculator_logical.py \
-        ${SPECULATOR_ARGS_GRANITE_13B}
+        ${SPECULATOR_ARGS_GRANITE_20B_HF}
 fi

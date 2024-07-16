@@ -293,30 +293,86 @@ MODEL_ARGS_GRANITE_13B="\
 --model_path=/gpfs/suneja/models/dmf_models/granite.13b.chat.v2.1-main/
 --model_arch=embedgpt_bigcode
 --model_variant=13b.chat.v2.1
---ckpt_load_path=/gpfs/suneja/checkpoints/granite-13b-chat-v2.1
---ckpt_save_path=/gpfs/suneja/checkpoints/granite-13b-chat-v2.1
+--ckpt_load_path=/gpfs/suneja/checkpoints/granite-13b-chat-v2.1-cconly
+--ckpt_save_path=/gpfs/suneja/checkpoints/granite-13b-chat-v2.1-cconly
 --logical_shards=768
 --sharding_strategy=tp
 --seq_length=8192
 --batch_size=2
 --report_interval=10
 --checkpoint_interval=5000
---num_steps=15000
+--num_steps=17293
 --stage2_start_step=100
 --stage2_batch_size=96
---n_speculator_heads=5
+--n_speculator_heads=4
 --speculator_width=5632
 --use_torch_compile=False
 --learning_rate=1e-3
 --seed=42
 --data_path=/gpfs1/users/suneja/datasets/bluepile-processing/rel0_4/tokens_gpt_neox/
---datasets="'dataset=commoncrawl','dataset=github_clean'"
---weights="'6320','940'"
+--datasets="'dataset=commoncrawl'"
+--weights="'1'"
+"
+#--n_speculator_heads=5
+#--ckpt_load_path=/gpfs/suneja/checkpoints/granite-13b-chat-v2.1
+#--ckpt_save_path=/gpfs/suneja/checkpoints/granite-13b-chat-v2.1
+#--datasets="'dataset=commoncrawl','dataset=github_clean'"
+#--weights="'6320','940'"
+
+
+MODEL_ARGS_LLAMA3_8B_SPECUV1_TMP="\
+--model_path=/gpfs/llama3/hf/8b_instruction_tuned
+--model_arch=embedllama
+--model_variant=8b
+--ckpt_load_path=/gpfs/suneja/checkpoints/llama3-8b-specuv1-tmp
+--ckpt_save_path=/gpfs/suneja/checkpoints/llama3-8b-specuv1-tmp
+--logical_shards=768
+--sharding_strategy=hsdp
+--seq_length=8192
+--batch_size=1
+--report_interval=10
+--checkpoint_interval=20
+--num_steps=20
+--stage2_start_step=20
+--stage2_batch_size=36
+--n_speculator_heads=4
+--speculator_width=4096
+--use_torch_compile=False
+--learning_rate=1e-3
+--seed=42
+--data_path=/gpfs/
+--datasets='fineweb-edu'
+--weights="'1'"
+"
+
+MODEL_ARGS_LLAMA2_7B_SPECUV1_TMP="\
+--model_path=/gpfs/suneja/models/hub/models--meta-llama--Llama-2-7b-chat-hf/snapshots/f5db02db724555f92da89c216ac04704f23d4590/
+--model_arch=embedllama
+--model_variant=7b
+--ckpt_load_path=/gpfs/suneja/checkpoints/llama2-7b-specuv1-tmp
+--ckpt_save_path=/gpfs/suneja/checkpoints/llama2-7b-specuv1-tmp
+--logical_shards=768
+--sharding_strategy=hsdp
+--seq_length=4096
+--batch_size=8
+--report_interval=10
+--checkpoint_interval=20
+--num_steps=20
+--stage2_start_step=20
+--stage2_batch_size=96
+--n_speculator_heads=3
+--speculator_width=4096
+--use_torch_compile=False
+--learning_rate=1e-3
+--seed=42
+--data_path=/gpfs1/users/suneja/datasets/bpv7_high_quality_rerun_fuzzy_deduped_incomplete/lang=en/
+--datasets="'dataset=commoncrawl'"
+--weights="'1'"
 "
 
 #export TORCH_LOGS="dynamo,recompiles"
 #export CUDA_LAUNCH_BLOCKING=1
-DO_BACKGROUND=1
+DO_BACKGROUND=0
 
 if [ $DO_BACKGROUND -eq 1 ]
 then
@@ -332,7 +388,7 @@ else
     torchrun \
         --nproc_per_node=8 \
         speculator/train_speculator.py \
-        ${MODEL_ARGS_LLAMA2_7B}
+        ${MODEL_ARGS_LLAMA2_7B_SPECUV1_TMP}
 fi        
 
 
