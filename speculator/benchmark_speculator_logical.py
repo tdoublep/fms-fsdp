@@ -3,6 +3,7 @@ import itertools
 import json
 import os
 import time
+import numpy as np
 
 import fms_extras.models.paged_gpt_bigcode
 import fms_extras.models.paged_llama
@@ -14,6 +15,7 @@ from fms_extras.models.speculator import MLPSpeculator
 from fms_extras.utils.generation import paged_generate, speculative_generate
 from torch import distributed as dist
 from tqdm import tqdm
+
 
 from fms_fsdp.utils.dataset_utils import Streaming_Doc_Dataset
 
@@ -155,23 +157,30 @@ torch.manual_seed(args.seed)
 
 local_rank = int(os.getenv("LOCAL_RANK", 0))
 world_size = int(os.getenv("WORLD_SIZE", 1))
+
+print("local_rank: ", local_rank)
+print("world_size: ", world_size)
+
 if args.device_type == "cuda":
     device = torch.device(args.device_type, local_rank)
     torch.cuda.set_device(device)
 else:
     device = torch.device(args.device_type)
 
-#torch.set_default_dtype(torch.half)
+print(device)
+
 torch.set_default_dtype(torch.bfloat16)
 
 # requires setting environment variable: `CUBLAS_WORKSPACE_CONFIG=:4096:8`
 if args.deterministic:
     torch.use_deterministic_algorithms(True)
 
+
 #if args.distributed:
 #    dist.init_process_group()
     
 dist.init_process_group()
+torch._C._distributed_c10d._register_process_group("default", dist.group.WORLD)
 
 print("loading model")
 if args.distributed:
@@ -190,8 +199,8 @@ model = get_model(
     device_type=args.device_type,
     source=args.model_source,
     #distributed_strategy=distr_param,
-    distributed_strategy="fsdp",
-    #group=dist.group.WORLD,
+    distributed_strategy=distr_param, #"fsdp",
+    group=dist.group.WORLD,
     #norm_eps=1e-6,
 )
 decode_model = None
@@ -245,6 +254,8 @@ if hasattr(model.config, "kvheads"):
 else:
     kv_heads = 1 if model.config.multiquery_attn else model.config.nheads
 
+print("tpa: dist.get_world_size(): ", dist.get_world_size())
+
 kv_cache_manager = PagedKVCacheManager(
     model.config.nlayers,
     model.config.nheads,
@@ -258,6 +269,8 @@ kv_cache_manager = PagedKVCacheManager(
 print("cache initialization complete on rank", local_rank)
 
 print("loading dataset", args.data_path)
+
+'''
 dataset = Streaming_Doc_Dataset(
     args.data_path,
     #local_rank, #for non fsdp model
@@ -284,16 +297,22 @@ while len(data) < 100:
         in_middle = False
     else:
         in_middle = True
+'''
+
+tokens_path = "/home/zrltpa/fmperf/requests/granite-20b-code-instruct_sahil_prompts.json"
+data = json.load(open(tokens_path, "r"))
+
 data = torch.IntTensor(data).to(device)
 
 add_special_tokens = tokenizer.bos_token_id != tokenizer.eos_token_id
+print("add_special_tokens: ", add_special_tokens)
 
 def ids_for_prompt(prompt):
     tokens = tokenizer.tokenize(prompt)
     #tokens = ["<s>"] + tokens
     ids = tokenizer.convert_tokens_to_ids(tokens)
     if add_special_tokens:
-        ids = [tokenizer.bos_token_id] + ids    
+        ids = [tokenizer.bos_token_id] + ids
     ids = torch.tensor(ids, dtype=torch.long, device=device)
     return ids
 
@@ -324,7 +343,7 @@ def infer(ids, k, warmup, model, decode_model, speculator):
 
     #if k != 0:
     if k != 0 and speculator is not None:
-        result, n_steps, ttft, generated_token_time_out = speculative_generate(
+        result, n_steps, n_gen_tokens, ttft, generated_token_time_out = speculative_generate(
             model,
             ids,
             speculator,
@@ -357,7 +376,7 @@ def infer(ids, k, warmup, model, decode_model, speculator):
             #print_result(result[i], ids[i], n_steps)
             total_tokens += len(result[i]) - len(ids[i])
         avg_tokens = total_tokens / len(result)
-        return generated_token_time_out / avg_tokens, avg_tokens / n_steps
+        return generated_token_time_out / avg_tokens, n_gen_tokens / n_steps
     return None
 
 torch._dynamo.config.cache_size_limit = 64
@@ -380,10 +399,13 @@ else:
     model_ = model
     speculator_ = speculator
 
+print("got here")
 alltimes = 0
 alltokens = 0
 ntrials = data.size(0) // bsize
 torch.cuda.empty_cache()
+
+tpa_test = []
 for i in tqdm(range(ntrials)):
     inp = data[i * bsize : i * bsize + bsize, :plen]
     if i == 0:
@@ -391,6 +413,8 @@ for i in tqdm(range(ntrials)):
     t, tok = infer(inp, k, False, model_, decode_model_, speculator_)
     alltimes += t
     alltokens += tok
+    tpa_test.append(tok)
+    print(tpa_test, np.mean(tpa_test))
 print(
     f"prefix = {plen}, bsize = {bsize}, k = {k}, time = {round(alltimes/ntrials, 2)}, tokens/step = {round(alltokens/ntrials, 2)}"
 )

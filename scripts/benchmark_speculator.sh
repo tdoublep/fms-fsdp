@@ -250,17 +250,20 @@ SPECULATOR_ARGS_LLAMA3_8B_HF="\
 SPECULATOR_ARGS_GRANITE_20B_HF="\
 --architecture=paged_gpt_bigcode
 --variant=ibm.20b
---model_path="/gpfs/suneja/models/dmf_models/granite-20b-code-instruct-20240506"
---tokenizer_path="/gpfs/suneja/models/dmf_models/granite-20b-code-instruct-20240506"
+--model_path="/home/zrltpa/models/granite-20b-code-instruct-20240506/"
+--tokenizer_path="/home/zrltpa/models/granite-20b-code-instruct-20240506/"
 --model_source=hf
---speculator_path="/gpfs/suneja/models/granite-20b-code-instruct-accelerator"
 --prompt_len=64
 --data_path="/gpfs/suneja/datasets/bluepile-granite/lang\=en/"
 --subdata="dataset=github_clean"
 --speculator_load_type=hf_remote
+--n_candidates=5
 --threshes=[6,4,3,3]
 --seed=211
+--speculator_path="/tmp/models--ibm-granite--granite-20b-code-instruct-accelerator/snapshots/ba7a42036002f21f7536df750c398966b0cb8ad9/"
 "
+#--distributed
+#--speculator_path="/tmp/models--ibm-granite--granite-20b-code-instruct-accelerator/snapshots/ba7a42036002f21f7536df750c398966b0cb8ad9/"
 
 SPECULATOR_ARGS_LLAMA2_13B_HF="\
 --architecture=paged_llama
@@ -401,7 +404,7 @@ SPECULATOR_ARGS_LLAMA2_7B_SPECUV1_TMP="\
 #--speculator_path="/gpfs/suneja/checkpoints/llama2-7b-specuv1-tmp/checkpoints/step_21_ckp.pth"
 
 
-DO_BACKGROUND=1
+DO_BACKGROUND=0
 
 if [ $DO_BACKGROUND -eq 1 ]
 then
@@ -411,7 +414,7 @@ then
         ${SPECULATOR_ARGS_LLAMA3_70B_SPECU2_CONVERTED_HF}\
         > nohup.out &
 else
-    export CUDA_VISIBLE_DEVICES=0
+    export CUDA_VISIBLE_DEVICES=7
     torchrun \
         --nproc_per_node=1 \
         speculator/benchmark_speculator_logical.py \
